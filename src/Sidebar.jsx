@@ -14,8 +14,7 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
   const [rooms, setRooms] = useState([]);
   const [users, setUsers] = useState([]);
   const [newRoomName, setNewRoomName] = useState("");
-  const [showRooms, setShowRooms] = useState(true);
-  const [showUsers, setShowUsers] = useState(true);
+  const [activeView, setActiveView] = useState("rooms");
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "chatRooms"), (snapshot) => {
@@ -46,20 +45,17 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
 
     if (trimmedName === "") return;
 
-    // Only allow letters (a-z, A-Z)
     const isValidName = /^[A-Za-z]+$/.test(trimmedName);
     if (!isValidName) {
       alert("Room name must only contain letters (A–Z, a–z).");
       return;
     }
 
-    // Length check
     if (trimmedName.length < 3 || trimmedName.length > 20) {
       alert("Room name must be between 3 and 20 characters.");
       return;
     }
 
-    // Check forbidden names
     const lowerTrimmed = trimmedName.toLowerCase();
     const containsForbiddenWord = forbiddenRoomNames.some((word) =>
       lowerTrimmed.includes(word)
@@ -70,7 +66,6 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
       return;
     }
 
-    // Check for duplicates
     const nameExists = rooms.some(
       (room) => room.name?.toLowerCase() === trimmedName.toLowerCase()
     );
@@ -103,128 +98,121 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
     return nameA.localeCompare(nameB);
   });
 
-  const sectionVariants = {
-    collapsed: { height: 0, opacity: 0, overflow: "hidden" },
-    expanded: { height: "auto", opacity: 1, overflow: "hidden" },
-  };
-
   return (
     <div className="w-64 h-full flex flex-col border-r border-gray-300 bg-white">
-      {/* Chat Rooms */}
-      <div
-        className="flex justify-between items-center px-4 pt-4 cursor-pointer select-none"
-        onClick={() => setShowRooms(!showRooms)}
-      >
-        <h3 className="text-xl font-semibold mb-1">Chat Rooms</h3>
-        <span className="text-lg">{showRooms ? "▾" : "▸"}</span>
+      {/* View Toggle */}
+      <div className="flex p-2 m-2 rounded-lg bg-gray-100">
+        <button
+          onClick={() => setActiveView("rooms")}
+          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors
+            ${
+              activeView === "rooms"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+        >
+          Rooms
+        </button>
+        <button
+          onClick={() => setActiveView("users")}
+          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors
+            ${
+              activeView === "users"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+        >
+          Users
+        </button>
       </div>
 
-      <AnimatePresence initial={false}>
-        {showRooms && (
-          <motion.div
-            key="rooms"
-            initial="collapsed"
-            animate="expanded"
-            exit="collapsed"
-            variants={sectionVariants}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className={`flex flex-col ${showUsers ? "" : "flex-grow"} min-h-0`}
-          >
-            {/* This div becomes scrollable */}
-            <div className="overflow-y-auto px-4 space-y-2 flex-grow scroll-smooth">
-              <ul>
-                {publicRooms.map((room) => (
-                  <li
-                    key={room.id}
-                    className={`cursor-pointer px-3 py-2 rounded hover:bg-gray-200 ${
-                      currentRoom === room.id ? "bg-gray-200" : ""
-                    }`}
-                    onClick={() => onSelectRoom(room.id)}
-                  >
-                    #{room.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="p-4 border-gray-200 flex flex-col gap-2">
-              <input
-                type="text"
-                value={newRoomName}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  const filtered = value.replace(/[^A-Za-z]/g, "");
-                  setNewRoomName(filtered);
-                }}
-                placeholder="new room name"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-              <button
-                onClick={createRoom}
-                className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-              >
-                Create
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Online Users */}
-      <div
-        className="flex justify-between items-center px-4 pt-4 cursor-pointer select-none"
-        onClick={() => setShowUsers(!showUsers)}
-      >
-        <h3 className="text-xl font-semibold mb-1">Online Users</h3>
-        <span className="text-lg">{showUsers ? "▾" : "▸"}</span>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {showUsers && (
-          <motion.div
-            key="users"
-            layout
-            initial="collapsed"
-            animate="expanded"
-            exit="collapsed"
-            variants={sectionVariants}
-            transition={{
-              type: "spring",
-              stiffness: 200,
-              damping: 20,
-            }}
-            className="flex flex-col flex-grow min-h-0"
-          >
-            {/* Scrollable user list */}
-            <div className="overflow-y-auto px-4 pb-4 space-y-2 flex-grow scroll-smooth">
-              <ul>
-                {sortedUsers.map((user) => {
-                  const privateRoomId = getPrivateRoomId(username, user.userId);
-                  const isActive = currentRoom === privateRoomId;
-
-                  return (
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-hidden relative">
+        <AnimatePresence initial={false} mode="wait">
+          {activeView === "rooms" ? (
+            <motion.div
+              key="rooms"
+              initial={{ x: -100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 100, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute w-full h-full flex flex-col"
+            >
+              <div className="flex-1 overflow-y-auto px-2 pb-2">
+                <ul className="space-y-1">
+                  {publicRooms.map((room) => (
                     <li
-                      key={user.userId}
-                      className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-200 ${
-                        isActive ? "bg-gray-200" : ""
-                      }`}
-                      onClick={() => handlePrivateChat(user.userId)}
+                      key={room.id}
+                      className={`cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-100
+                        ${currentRoom === room.id ? "bg-gray-100" : ""}`}
+                      onClick={() => onSelectRoom(room.id)}
                     >
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                      {user.displayName}
+                      #{room.name}
                     </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="p-2 border-t border-gray-100">
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <input
+                    type="text"
+                    value={newRoomName}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const filtered = value.replace(/[^A-Za-z]/g, "");
+                      setNewRoomName(filtered);
+                    }}
+                    placeholder="New room"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 truncate"
+                  />
+                  <button
+                    onClick={createRoom}
+                    className="px-3 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition whitespace-nowrap"
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="users"
+              initial={{ x: 100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -100, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute w-full h-full flex flex-col"
+            >
+              <div className="flex-1 overflow-y-auto px-2 pb-2">
+                <ul className="space-y-1">
+                  {sortedUsers.map((user) => {
+                    const privateRoomId = getPrivateRoomId(username, user.userId);
+                    const isActive = currentRoom === privateRoomId;
+
+                    return (
+                      <li
+                        key={user.userId}
+                        className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100
+                          ${isActive ? "bg-gray-100" : ""}`}
+                        onClick={() => handlePrivateChat(user.userId)}
+                      >
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        <span className="truncate">{user.displayName}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Logged in user info */}
-      <div className="mt-auto px-4 py-3">
-        <div className="bg-blue-100 mb-1 text-blue-800 text-md font-medium px-3 py-2 rounded-xl text-center shadow-sm">
-          Logged in as: {username.split("-")[0]}
+      <div className="px-4 py-3 border-t border-gray-100">
+        <div className="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg text-center truncate">
+          logged in as @{username.split("-")[0]}
         </div>
       </div>
     </div>
