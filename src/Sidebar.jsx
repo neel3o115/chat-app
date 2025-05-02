@@ -60,7 +60,12 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
     }
 
     // Check forbidden names
-    if (forbiddenRoomNames.includes(trimmedName.toLowerCase())) {
+    const lowerTrimmed = trimmedName.toLowerCase();
+    const containsForbiddenWord = forbiddenRoomNames.some((word) =>
+      lowerTrimmed.includes(word)
+    );
+
+    if (containsForbiddenWord) {
       alert("This room name contains inappropriate or reserved words.");
       return;
     }
