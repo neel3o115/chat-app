@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { db } from "./firebase";
-import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import Sidebar from "./Sidebar";
 import ChatRoom from "./ChatRoom";
 import { generateUniqueId } from "./utils";
@@ -12,6 +18,7 @@ function App() {
   const [nameSubmitted, setNameSubmitted] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [error, setError] = useState("");
+  const [liked, setLiked] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,7 +34,7 @@ function App() {
 
     const loweredName = name.toLowerCase();
     if (forbiddenSubstrings.some((str) => loweredName.includes(str))) {
-      setError("this name contains inappropriate or reserved words.");
+      setError("This name contains inappropriate or reserved words.");
       return;
     }
 
@@ -36,13 +43,14 @@ function App() {
 
     if (docSnap.exists()) {
       const userData = docSnap.data();
+      const lastSeen = userData.lastSeen?.toDate().getTime() || 0;
       const currentTime = Date.now();
-      const userInactiveDuration = currentTime - userData.joinedAt;
+      const userInactiveDuration = currentTime - lastSeen;
 
-      if (userInactiveDuration > 1 * 60 * 1000) {
+      if (userInactiveDuration > 2 * 60 * 1000) {
         await deleteDoc(userRef);
       } else {
-        setError("this username is already in use. try something else.");
+        setError("This username is already in use. Try something else.");
         return;
       }
     }
@@ -56,7 +64,7 @@ function App() {
     await setDoc(userRef, {
       displayName: name,
       userId: uniqueUsername,
-      joinedAt: Date.now(),
+      lastSeen: serverTimestamp(),
       status: "online",
     });
   };
@@ -70,17 +78,22 @@ function App() {
     const updateOnlineStatus = () => {
       setDoc(
         userRef,
-        { status: "online", lastSeen: Date.now() },
+        { status: "online", lastSeen: serverTimestamp() },
         { merge: true }
       );
     };
 
     const interval = setInterval(updateOnlineStatus, 10000);
-    window.addEventListener("beforeunload", () => deleteDoc(userRef));
+    const deleteUserDoc = () => deleteDoc(userRef);
+
+    window.addEventListener("beforeunload", deleteUserDoc);
+    window.addEventListener("pagehide", deleteUserDoc);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener("beforeunload", () => deleteDoc(userRef));
+      window.removeEventListener("beforeunload", deleteUserDoc);
+      window.removeEventListener("pagehide", deleteUserDoc);
+      deleteUserDoc();
     };
   }, [username]);
 
@@ -129,96 +142,116 @@ function App() {
             ) : (
               <div className="flex flex-col h-screen p-4 bg-gray-100">
                 <div className="flex-1 overflow-y-auto border border-gray-300 rounded-md p-4 bg-white shadow-sm">
-                  {/* Welcome & CloakBot Guide Messages */}
                   <div className="mb-4 space-y-2">
                     <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p className="font-semibold mb-1">birajit</p>
+                      <div className="max-w-xs md:max-w-md bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
+                        <div className="flex items-baseline gap-2 mb-1">
+                          <span className="font-semibold">AppTeam</span>
+                          <span className="text-xs text-blue-700">
+                            • Just now
+                          </span>
+                        </div>
+                        <p>Hey {username.split("-")[0]}! Let's get started:</p>
+                      </div>
+                    </div>
+                    <div className="flex justify-start">
+                      <div className="max-w-xs md:max-w-md bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
                         <p>
-                          Hey {username.split("-")[0]}! Welcome aboard! Wanna see who's online?
-                          Just check the <strong>‘Online Users’</strong> section in the left
-                          sidebar. You can click on any name to start a convo
-                          instantly!
+                          <strong>Find Friends</strong>
+                          <br />
+                          Click the{" "}
+                          <span className="font-semibold">"Users"</span> button
+                          in the sidebar → See who's here right now!
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-start">
+                      <div className="max-w-xs md:max-w-md bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
+                        <p>
+                          <strong>Join the Party</strong>
+                          <br />
+                          Switch to{" "}
+                          <span className="font-semibold">"Rooms"</span> in the
+                          sidebar → Try #memes or #feedback!
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-start">
+                      <div className="max-w-xs md:max-w-md bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
+                        <p>
+                          <strong>Create Your Space</strong>
+                          <br />
+                          Use the{" "}
+                          <span className="font-semibold">"Create"</span> button
+                          at the bottom of Rooms list → Friends can join with
+                          the room name!
                         </p>
                       </div>
                     </div>
 
                     <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p className="font-semibold mb-1">devansh</p>
+                      <div className="max-w-xs md:max-w-md bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
                         <p>
-                          Not in the mood for 1-on-1? No worries! Jump into any
-                          public chatroom from the <strong>‘Chatrooms’</strong> list. No invites,
-                          no drama—just chat!
+                          PS: Found a bug? Have ideas? We're all ears in{" "}
+                          <span className="font-semibold">#feedback</span>!
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p className="font-semibold mb-1">abhey</p>
-                        <p>
-                          Need some privacy? Just <strong>create your own room </strong> and share
-                          the name with your friends. It’s your space, your
-                          rules!
-                        </p>
-                      </div>
-                    </div>
+                    <div className="flex justify-start relative mb-6">
+                      <div className="max-w-xs md:max-w-md bg-blue-900 text-white px-4 py-2 rounded-lg shadow-lg border border-blue-700">
+                        <div className="flex flex-col gap-2">
+                          <p className="text-lg font-semibold text-blue-200">
+                            Coming Soon!
+                          </p>
 
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p className="font-semibold mb-1">priyanshu</p>
-                        <p>
-                          One quick heads-up: all chats are temporary and
-                          completely anonymous. So say what you feel but don’t
-                          forget to be kind
-                        </p>
-                      </div>
-                    </div>
+                          <img
+                            src="https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif"
+                            alt="Excited animation"
+                            className="w-full rounded-lg max-w-[200px] h-auto mb-2"
+                          />
 
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p className="font-semibold mb-1">neel</p>
-                        <p>
-                          And that’s not all! We’re cooking up some cool updates
-                        </p>
-                      </div>
-                    </div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="px-3 py-1 bg-blue-800 rounded-full text-sm text-blue-100">
+                              Themes
+                            </span>
+                            <span className="px-3 py-1 bg-blue-800 rounded-full text-sm text-blue-100">
+                              GIFs
+                            </span>
+                            <span className="px-3 py-1 bg-blue-800 rounded-full text-sm text-blue-100">
+                              Reactions
+                            </span>
+                          </div>
+                        </div>
 
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p>
-                          Notifications, so you’ll know the moment someone texts
-                          you!
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p>Themes to match your vibe.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p>Reactions to express yourself better.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p>And much more on the way!</p>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-start">
-                      <div className="max-w-xs md:max-w-lg bg-blue-100 text-blue-900 px-4 py-2 rounded-lg shadow">
-                        <p>
-                          P.S. There’s a chatroom just for feedback—we’d love to
-                          hear what you think. Drop your thoughts there and help
-                          us improve!
-                        </p>
+                        <div className="absolute left-60 bottom-17">
+                          <button
+                            onClick={() => setLiked(!liked)}
+                            className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl shadow-lg transition-all duration-200 ${
+                              liked
+                                ? "bg-blue-100 hover:bg-blue-200"
+                                : "bg-blue-100 hover:bg-blue-100"
+                            }`}
+                          >
+                            {liked ? (
+                              <svg
+                                className="w-10 h-10 text-red-500"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="w-8 h-8 text-red-500"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

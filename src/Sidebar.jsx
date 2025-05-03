@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { db } from "./firebase";
-import {
-  collection,
-  addDoc,
-  onSnapshot,
-  serverTimestamp,
-} from "firebase/firestore";
+import { collection, addDoc, onSnapshot, serverTimestamp, query, where, Timestamp } from "firebase/firestore";
 import { getPrivateRoomId } from "./utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { forbiddenRoomNames } from "./filterWords";
@@ -18,36 +13,30 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "chatRooms"), (snapshot) => {
-      const roomsList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const roomsList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setRooms(roomsList);
     });
-
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(
+    const q = query(
       collection(db, "activeUsers"),
-      (snapshot) => {
-        const usersList = snapshot.docs.map((doc) => doc.data());
-        setUsers(usersList.filter((u) => u.userId !== username));
-      }
+      where("lastSeen", ">", Timestamp.fromDate(new Date(Date.now() - 120000)))
     );
-
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersList = snapshot.docs.map((doc) => doc.data());
+      setUsers(usersList.filter((u) => u.userId !== username));
+    });
     return () => unsubscribe();
   }, [username]);
 
   const createRoom = async () => {
     const trimmedName = newRoomName.trim();
+    if (!trimmedName) return;
 
-    if (trimmedName === "") return;
-
-    const isValidName = /^[A-Za-z]+$/.test(trimmedName);
-    if (!isValidName) {
-      alert("Room name must only contain letters (A–Z, a–z).");
+    if (!/^[A-Za-z]+$/.test(trimmedName)) {
+      alert("Room name must only contain letters.");
       return;
     }
 
@@ -57,20 +46,13 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
     }
 
     const lowerTrimmed = trimmedName.toLowerCase();
-    const containsForbiddenWord = forbiddenRoomNames.some((word) =>
-      lowerTrimmed.includes(word)
-    );
-
-    if (containsForbiddenWord) {
-      alert("This room name contains inappropriate or reserved words.");
+    if (forbiddenRoomNames.some((word) => lowerTrimmed.includes(word))) {
+      alert("This room name contains inappropriate words.");
       return;
     }
 
-    const nameExists = rooms.some(
-      (room) => room.name?.toLowerCase() === trimmedName.toLowerCase()
-    );
-    if (nameExists) {
-      alert("A room with this name already exists.");
+    if (rooms.some((room) => room.name?.toLowerCase() === trimmedName.toLowerCase())) {
+      alert("Room name already exists.");
       return;
     }
 
@@ -79,7 +61,6 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp(),
     });
-
     setNewRoomName("");
   };
 
@@ -100,33 +81,21 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
 
   return (
     <div className="w-64 h-full flex flex-col border-r border-gray-300 bg-white">
-      {/* View Toggle */}
       <div className="flex p-2 m-2 rounded-lg bg-gray-100">
         <button
           onClick={() => setActiveView("rooms")}
-          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors
-            ${
-              activeView === "rooms"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${activeView === "rooms" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
         >
           Rooms
         </button>
         <button
           onClick={() => setActiveView("users")}
-          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors
-            ${
-              activeView === "users"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
+          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${activeView === "users" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
         >
           Users
         </button>
       </div>
 
-      {/* Scrollable Content Area */}
       <div className="flex-1 overflow-hidden relative">
         <AnimatePresence initial={false} mode="wait">
           {activeView === "rooms" ? (
@@ -143,8 +112,7 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
                   {publicRooms.map((room) => (
                     <li
                       key={room.id}
-                      className={`cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-100
-                        ${currentRoom === room.id ? "bg-gray-100" : ""}`}
+                      className={`cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-100 ${currentRoom === room.id ? "bg-gray-100" : ""}`}
                       onClick={() => onSelectRoom(room.id)}
                     >
                       #{room.name}
@@ -156,13 +124,8 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
               <div className="p-2 border-t border-gray-100">
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <input
-                    type="text"
                     value={newRoomName}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      const filtered = value.replace(/[^A-Za-z]/g, "");
-                      setNewRoomName(filtered);
-                    }}
+                    onChange={(e) => setNewRoomName(e.target.value.replace(/[^A-Za-z]/g, ""))}
                     placeholder="New room"
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 truncate"
                   />
@@ -188,13 +151,10 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
                 <ul className="space-y-1">
                   {sortedUsers.map((user) => {
                     const privateRoomId = getPrivateRoomId(username, user.userId);
-                    const isActive = currentRoom === privateRoomId;
-
                     return (
                       <li
                         key={user.userId}
-                        className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100
-                          ${isActive ? "bg-gray-100" : ""}`}
+                        className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 ${currentRoom === privateRoomId ? "bg-gray-100" : ""}`}
                         onClick={() => handlePrivateChat(user.userId)}
                       >
                         <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -209,7 +169,6 @@ const Sidebar = ({ onSelectRoom, currentRoom, username }) => {
         </AnimatePresence>
       </div>
 
-      {/* Logged in user info */}
       <div className="px-4 py-3 border-t border-gray-100">
         <div className="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-2 rounded-lg text-center truncate">
           logged in as @{username.split("-")[0]}
